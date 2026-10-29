@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.heybuddy.web</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROJECT_DIR__/.venv/bin/python</string>
+        <string>run.py</string>
+        <string>web</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- Fastest model in testing (0.6 s per step); the 128k variant only adds unused context and memory -->
+        <key>BUDDY_TALK_MODEL</key>
+        <string>qwen3-coder-32k:latest</string>
+        <key>BUDDY_AGENT_MODEL</key>
+        <string>qwen3-coder-32k:latest</string>
+        <key>BUDDY_CODER_MODEL</key>
+        <string>qwen3-coder-32k:latest</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <!-- Whisper model is already downloaded; don't contact Hugging Face on startup -->
+        <key>HF_HUB_OFFLINE</key>
+        <string>1</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it crashes, but not if it exits cleanly -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/heybuddy.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/heybuddy.log</string>
+</dict>
+</plist>

@@ -1,0 +1,16 @@
+# Hey Buddy: tested with Python 3.14 on Apple Silicon (macOS)
+fastapi==0.141.1
+uvicorn==0.54.0
+websockets==17.1
+pydantic==2.13.5
+requests==2.34.2
+rich==15.0.0
+numpy==2.5.3
+
+# On-device speech recognition (Apple Silicon)
+mlx-whisper==0.4.3
+
+# Gmail (optional)
+google-api-python-client==2.200.0
+google-auth==2.59.0
+google-auth-oauthlib==1.4.1

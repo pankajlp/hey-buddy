@@ -1,0 +1,20 @@
+# Python environment and caches
+.venv/
+__pycache__/
+*.pyc
+
+# Backups and local leftovers
+src.bak-*/
+*.bak
+
+# Personal files: these belong in ~/Library/Application Support/HeyBuddy/, never in the repo
+settings.json
+google_client_secret*.json
+client_secret*.json
+google_token.json
+conversation.json
+*.log
+.DS_Store
+
+# Built from src/system/buddy_helper.swift (see README)
+src/system/buddy_helper
