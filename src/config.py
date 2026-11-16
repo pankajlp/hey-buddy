@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional
 
@@ -7,6 +8,16 @@ from pydantic import BaseModel
 def env(name: str, default: str = "", legacy: Optional[str] = None) -> str:
     """Setting from the environment: BUDDY_<name>, or the older CLICKY_<name> name."""
     return os.getenv(f"BUDDY_{name}") or os.getenv(legacy or f"CLICKY_{name}") or default
+
+
+def env_int(name: str, default: int) -> int:
+    """Whole-number setting; an invalid value falls back to the default instead of crashing startup."""
+    raw = env(name)
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        logging.getLogger("heybuddy.config").warning("Ignoring BUDDY_%s=%r (not a number); using %s", name, raw, default)
+        return default
 
 
 class Config(BaseModel):
@@ -23,7 +34,7 @@ class Config(BaseModel):
     # Voice (macOS text-to-speech)
     voice_enabled: bool = env("VOICE", default="true").lower() in ("true", "1", "yes")
     voice_name: str = env("VOICE_NAME", default="")  # empty = system default
-    voice_rate: int = int(env("VOICE_RATE", default="195"))
+    voice_rate: int = env_int("VOICE_RATE", 195)
     
     # Behavior & Safety
     auto_screen_context: bool = True

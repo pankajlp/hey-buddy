@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Any, Callable, Dict, List, Optional
 import inspect
@@ -7,6 +8,8 @@ from src.skills import apps, browser, gmail, linkedin, music, system_settings  #
 from src.skills.registry import SKILLS
 from src.system.mac_bridge import MacBridge
 from src.system.voice import VoiceEngine
+
+logger = logging.getLogger("heybuddy.tools")
 
 # Tool schema definitions following Ollama / OpenAI function format
 TOOLS_SPEC: List[Dict[str, Any]] = [
@@ -398,4 +401,5 @@ class ToolDispatcher:
                 return f"Unknown tool: {tool_name}"
 
         except Exception as e:
+            logger.exception("Tool %s failed", tool_name)
             return f"Error executing tool '{tool_name}': {e}"

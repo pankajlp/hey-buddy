@@ -20,9 +20,16 @@ MAX_BODY_CHARS = 4000
 _AUTOMATED_SENDER = re.compile(r"no-?reply|do-?not-?reply|alerts?[@.]|notifications?[@.]|mailer-daemon|jobalerts|updates?[@.]", re.I)
 
 
+_cached: Dict[str, Any] = {}
+
+
 def _service():
+    """Gmail API client, rebuilt only when the stored credentials change (e.g. after a refresh or re-login)."""
     from googleapiclient.discovery import build
-    return build("gmail", "v1", credentials=credentials(), cache_discovery=False)
+    creds = credentials()
+    if _cached.get("token") != creds.token or "service" not in _cached:
+        _cached.update(service=build("gmail", "v1", credentials=creds, cache_discovery=False), token=creds.token)
+    return _cached["service"]
 
 
 def _headers(msg: Dict[str, Any]) -> Dict[str, str]:

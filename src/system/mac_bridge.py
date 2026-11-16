@@ -46,8 +46,11 @@ class MacBridge:
                 result = {"output": proc.stdout.strip()}
             if proc.returncode != 0 and "error" not in result:
                 result = {"error": proc.stderr.strip() or f"Helper exited with code {proc.returncode}"}
+            if "error" in result:
+                logger.warning("buddy_helper %s failed: %s", cmd, result["error"])
             return result
         except Exception as e:
+            logger.warning("buddy_helper %s failed: %s", cmd, e)
             return {"error": str(e)}
 
     @classmethod
@@ -220,7 +223,7 @@ class MacBridge:
         return cls._run_helper("ocr_image", image_path, timeout=45)
 
     # What the last read_screen saw, so clicks can be checked against real text positions
-    _last_read: Dict[str, Any] = {"time": 0.0, "points": []}
+    _last_read: Dict[str, Any] = {"time": 0.0, "points": [], "app": "", "title": ""}
 
     @classmethod
     def front_window(cls) -> Dict[str, Any]:
@@ -273,6 +276,7 @@ class MacBridge:
                 result["app"] = window.get("app", "")
                 result["window_title"] = window.get("title", "")
                 result["scope"] = "front window" if region else "whole screen"
+                cls._last_read.update(app=window.get("app", ""), title=window.get("title", ""))
             return result
         finally:
             try:
@@ -311,7 +315,8 @@ class MacBridge:
 
         # Reading order: top to bottom, then left to right (rows ~10pt tall)
         elements.sort(key=lambda e: (e["y"] // 10, e["x"]))
-        cls._last_read = {"time": time.time(), "points": [(e["x"], e["y"]) for e in elements]}
+        cls._last_read = {"time": time.time(), "points": [(e["x"], e["y"]) for e in elements],
+                          "app": "", "title": ""}
         return {
             "screen_size": f"{round(ocr['image_width'] / scale)}x{round(ocr['image_height'] / scale)}",
             "total_found": len(elements),
@@ -319,10 +324,18 @@ class MacBridge:
         }
 
     @classmethod
-    def near_recent_text(cls, x: int, y: int, radius: int = 60, max_age: float = 120) -> bool:
-        """True if (x, y) is close to text found by a read_screen in the last couple of minutes."""
-        if time.time() - cls._last_read["time"] > max_age:
+    def near_recent_text(cls, x: int, y: int, radius: int = 60, max_age: float = 60) -> bool:
+        """
+        True if (x, y) is close to text found by a recent read_screen of the window that is
+        still in front. A read of a different app or window doesn't count: its positions are stale.
+        """
+        last = cls._last_read
+        if time.time() - last["time"] > max_age:
             return False
+        if last.get("app"):
+            front = cls.front_window()
+            if front.get("app") != last["app"] or front.get("title", "") != last.get("title", ""):
+                return False
         return any(abs(px - x) <= radius and abs(py - y) <= radius / 2 for px, py in cls._last_read["points"])
 
     @staticmethod

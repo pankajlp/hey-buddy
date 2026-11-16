@@ -5,10 +5,13 @@ Setup (once): put the OAuth client file downloaded from Google Cloud at CLIENT_F
 `python run.py google-login`. The user signs in and approves in their own browser; the app
 never sees the password. The resulting token is stored at TOKEN_FILE, readable only by the user.
 """
+import logging
 import os
 import stat
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger("heybuddy.google")
 
 CONFIG_DIR = Path.home() / "Library" / "Application Support" / "HeyBuddy"
 CLIENT_FILE = CONFIG_DIR / "google_client_secret.json"
@@ -82,7 +85,8 @@ def account_email() -> Optional[str]:
         from googleapiclient.discovery import build
         service = build("gmail", "v1", credentials=credentials(), cache_discovery=False)
         return service.users().getProfile(userId="me").execute().get("emailAddress")
-    except Exception:
+    except Exception as e:
+        logger.warning("Could not look up the Google account: %s", e)
         return None
 
 
