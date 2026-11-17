@@ -26,6 +26,13 @@ def _is_original(title: str) -> bool:
 
 _VARIANT_WORDS = re.compile(r"\b(remix|mix|lofi|lo-fi|flip|sad|version|instrumental|unplugged|reprise|slowed|reverb|karaoke|cover)\b", re.I)
 
+# Spotlight hits that are almost never what the user means
+_NOISY_PATH = re.compile(r"/(node_modules|site-packages|\.git|\.venv|Caches|DerivedData|__pycache__)/|/Library/(?!Mobile Documents)|"
+                         r"\.app/Contents/|/\.", re.I)
+_SEARCH_STOPWORDS = {"the", "my", "a", "an", "file", "files", "named", "called", "document", "find", "where", "is"}
+_FILE_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx", "txt", "md", "png", "jpg", "jpeg",
+                    "zip", "pages", "numbers", "key", "mp3", "mp4", "mov", "app"}
+
 class MacBridge:
     """
     Native bridge connecting the agent to macOS APIs, accessibility,
@@ -195,13 +202,38 @@ class MacBridge:
 
     @classmethod
     def spotlight_search(cls, query: str, max_results: int = 10) -> List[str]:
-        """Search files/apps using macOS Spotlight metadata index."""
+        """
+        Find files, folders, and apps with Spotlight. Plain words match file names first
+        ("resume pdf" -> names containing "resume" ending in .pdf), then file contents;
+        Spotlight query syntax (e.g. kMDItemKind == ...) is passed through as is.
+        """
+        def run(args: List[str]) -> List[str]:
+            proc = subprocess.run(["mdfind", *args], capture_output=True, text=True, timeout=8)
+            return [line.strip() for line in proc.stdout.splitlines() if line.strip()] if proc.returncode == 0 else []
+
+        def useful(path: str) -> bool:
+            return not _NOISY_PATH.search(path)
+
+        def rank(path: str):
+            home_docs = path.startswith(tuple(str(Path.home() / d) for d in ("Desktop", "Documents", "Downloads")))
+            return (not home_docs, not path.startswith(("/Applications", "/System/Applications")), path.count("/"), path)
+
         try:
-            cmd = ["mdfind", query]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
-            if proc.returncode == 0:
-                lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-                return lines[:max_results]
+            if re.search(r"[=:*]", query):
+                return [p for p in run([query]) if useful(p)][:max_results]
+            words = [w for w in re.findall(r"[\w\-]+", query.lower()) if w not in _SEARCH_STOPWORDS] or [query.lower()]
+            exts = [w for w in words if w in _FILE_EXTENSIONS]
+            names = [w for w in words if w not in _FILE_EXTENSIONS] or words
+            key = max(names, key=len)
+
+            def matches(path: str) -> bool:
+                base = os.path.basename(path).lower()
+                return all(n in base for n in names) and (not exts or any(base.endswith("." + e) for e in exts))
+
+            found = [p for p in run(["-name", key]) if useful(p) and matches(p)]
+            if not found:
+                found = [p for p in run([" ".join(names)]) if useful(p)]
+            return sorted(found, key=rank)[:max_results]
         except Exception as e:
             logger.warning(f"Spotlight search error: {e}")
         return []

@@ -45,7 +45,8 @@ CODE_WORDS = re.compile(
 MAIL_RULE = re.compile(r"\b(e-?mails?|mails?|inbox|gmail|drafts?|unread)\b|\breply to\b", re.I)
 MAIL_WORDS = re.compile(r"\b(e-?mails?|mails?|inbox|gmail)\b", re.I)
 LINKEDIN_RULE = re.compile(r"\blinked ?in\b", re.I)
-NOT_MUSIC = re.compile(r"\b(youtube|video|videos|movie|netflix|podcast|game)\b", re.I)
+NOT_MUSIC = re.compile(
+    r"\b(youtube|video|videos|movie|netflix|podcast|game|pdf|docx?|files?|folders?|documents?|cv)\b", re.I)
 APP_COMMAND = re.compile(
     r"^\s*(?:please\s+)?(?:can you\s+)?(?:open|launch|start|quit|close|exit|switch to|go to|bring up|hide)\s+"
     r"(?:the\s+|my\s+)?(.+?)(?:\s+app(?:lication)?)?\s*[.!?]*\s*$", re.I)
@@ -54,6 +55,8 @@ CLOSE_THIS = re.compile(r"^\s*(please\s+)?(close|shut)\s+(it|this|that)(\s+(page
 QUIT_WORDS = re.compile(r"\b(close|closed|quit|exit|kill|shut down)\b", re.I)
 WINDOW_RULE = re.compile(
     r"\b(window|full ?screen|left half|right half|left side|right side|snap|minimi[sz]e|maximi[sz]e)\b", re.I)
+WHERE_IS_FILE = re.compile(
+    r"^\s*(where('?s| is| are| did i (save|put))|find)\b.*\b(installed|saved|stored|located|kept|files?|folders?|pdf|docs?|documents?)\b", re.I)
 RUNNING_APPS_RULE = re.compile(
     r"\b(what|which|list|show)\b.*\b(apps?|applications?)\b.*\b(open|running)\b", re.I)
 
@@ -96,6 +99,8 @@ class Router:
     def _by_rules(self, text: str, previous: Optional[str] = None) -> Optional[Route]:
         if RUNNING_APPS_RULE.search(text):
             return Route("apps", "rule")
+        if WHERE_IS_FILE.search(text):
+            return Route("general", "rule: find")
 
         # "open Safari", "quit Music": an installed app name after the verb is unambiguous
         match = APP_COMMAND.match(text)

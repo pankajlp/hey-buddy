@@ -96,26 +96,31 @@ class Orchestrator:
             return context
         return f"{context or ''}\n\n{lesson_context}".strip()
 
+    def _direct(self, name: str, args: Dict[str, Any], func) -> str:
+        """Run a skill without the model, reporting it like any other action (activity log, evals)."""
+        if self.on_action:
+            self.on_action(name, args)
+        result = func(**args)
+        if self.on_observation:
+            self.on_observation(result)
+        return result
+
     def _fast_path(self, text: str, context: str):
         """Common requests with one obvious action run directly, without the model picking tools."""
         from src.skills.browser import youtube_play
         from src.skills.apps import list_running_apps
         if LIST_RUNNING_APPS.match(text):
-            if self.on_action:
-                self.on_action("list_running_apps", {})
-            result = list_running_apps()
-            if self.on_observation:
-                self.on_observation(result)
+            result = self._direct("list_running_apps", {}, list_running_apps)
             return "apps", result, [f"list_running_apps() -> {result[:70]}"]
         m = PLAY_NTH_VIDEO.match(text)
         on_youtube = "youtube" in context.split("Now in front:")[-1].lower() or "youtube" in memory.render(2).lower()
         if m and on_youtube:
             which = ORDINALS.get(m.group("n").lower(), None) or int(re.sub(r"\D", "", m.group("n")) or 1)
-            result = youtube_play(which=which)
+            result = self._direct("youtube_play", {"which": which}, youtube_play)
             return "browser", _spoken(result), [f"youtube_play(which={which}) -> {result[:70]}"]
         m = PLAY_ON_YOUTUBE.match(text)
         if m:
-            result = youtube_play(query=m.group("q").strip())
+            result = self._direct("youtube_play", {"query": m.group("q").strip()}, youtube_play)
             return "browser", _spoken(result), [f"youtube_play({m.group('q')}) -> {result[:70]}"]
         return None
 

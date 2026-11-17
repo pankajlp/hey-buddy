@@ -58,6 +58,23 @@ HONESTY_RULE = (
 MADE_UP_SETTING = re.compile(
     r"\b(test(ing)?|demo|simulated|simulation|sandbox(ed)?|mock)\s+(environment|interface|mode|setup|page)\b", re.I)
 
+# Things the model sometimes does on its own initiative. Enforced here because prompt rules
+# alone weren't enough (the scorecard caught both): closing what the user didn't ask to close,
+# and opening what the user only asked to find.
+_CLOSE_WORDS = re.compile(r"\b(close|closing|shut|quit|exit|kill|stop|get rid of)\b", re.I)
+_FIND_ONLY = re.compile(r"^\s*(where('?s| is| are| did i)|find|search for|locate|look for)\b", re.I)
+_OPEN_WORDS = re.compile(r"\b(open|launch|start|run|show me|play|bring up)\b", re.I)
+
+
+def _not_asked_for(tool_name: str, request: str) -> Optional[str]:
+    if tool_name in ("close_tab", "quit_app") and not _CLOSE_WORDS.search(request):
+        return (f"the user didn't ask to close anything. Don't use {tool_name}; if the page or app isn't what "
+                "you expected, say what you see instead.")
+    if tool_name in ("open_app_or_file", "open_app", "switch_to_app") and _FIND_ONLY.search(request) \
+            and not _OPEN_WORDS.search(request):
+        return "the user only asked to find it. Report what you found (names and folders) without opening it."
+    return None
+
 class BaseAgent:
     # Include the frontmost app, window, and running apps with each request
     wants_screen_context = True
@@ -205,7 +222,7 @@ class BaseAgent:
         """Run a tool, requiring user approval for sensitive tools in safe mode."""
         if tool_name == HANDOFF_TOOL["function"]["name"]:
             return "Handing the request to another assistant."
-        refusal = self._tool_refusal(tool_name, args)
+        refusal = self._tool_refusal(tool_name, args) or _not_asked_for(tool_name, getattr(self, "current_request", ""))
         if tool_name == "task_completed" and self.actions_taken == 0:
             refusal = ("nothing has been done yet. Use a tool to actually do it (or not_my_task if it isn't yours); "
                        "if it can't be done, reply in plain text saying so.")
@@ -214,7 +231,9 @@ class BaseAgent:
             self.refused.append(tool_name)
             return (f"REFUSED, NOT DONE: {refusal} This action did not happen; "
                     "don't tell the user it did.")
-        if config.safe_mode and tool_name in SENSITIVE_TOOLS:
+        # Sensitive tools always ask; others ask when this particular use is high risk
+        # (e.g. click_on_page on "Buy now" or "Send")
+        if config.safe_mode and (tool_name in SENSITIVE_TOOLS or high_risk_reason(tool_name, args)):
             approved = self._approve(tool_name, args)
             if approved is None:
                 return (
