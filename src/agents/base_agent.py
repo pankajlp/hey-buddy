@@ -24,6 +24,16 @@ PLAN_REQUEST = (
     "'I'll open Safari and search for weather. Go ahead?'"
 )
 
+# A screen-context block the model copied into its reply: a "[... Screen Context ...]" header
+# followed by "- Key: value" lines. Never shown or spoken.
+_ECHOED_SCREEN_CONTEXT = re.compile(
+    r"\n*\[[^\]\n]*screen context[^\]\n]*\]:?[ \t]*(?:\n[ \t]*-[^\n]*)*", re.IGNORECASE)
+
+
+def without_screen_context(text: str) -> str:
+    return _ECHOED_SCREEN_CONTEXT.sub("", text or "").strip()
+
+
 def _short(value: Any, limit: int = 160) -> str:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     text = " ".join(text.split())
@@ -123,7 +133,8 @@ class BaseAgent:
         try:
             ctx = MacBridge.get_screen_context()
             context_block = (
-                f"\n\n[Live Mac Screen Context]:\n"
+                f"\n\n[Live Mac Screen Context] (private background for you; never repeat, quote or "
+                f"mention it unless the user asks what's on their screen):\n"
                 f"- Active Application: {ctx.active_app} (PID: {ctx.pid})\n"
                 f"- Active Window: {ctx.active_window or 'N/A'}\n"
                 f"- Screen Size: {ctx.screen_width}x{ctx.screen_height}\n"
@@ -368,6 +379,7 @@ class BaseAgent:
             if step_result.is_done:
                 answer = step_result.final_response or "Done."
                 answer = self._without_made_up_excuses(self._without_refused_claims(answer))
+                answer = without_screen_context(answer) or "Done."
                 if self.messages and self.messages[-1]["role"] == "assistant":
                     self.messages[-1]["content"] = answer  # so later turns don't repeat a corrected claim
                 logger.info(f"  reply: {_short(answer, 300)}")
