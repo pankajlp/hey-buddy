@@ -1,7 +1,9 @@
 """
 Natural-sounding speech, generated on-device through MLX. Two engines:
 
-  clone   your own voice: Chatterbox Turbo conditioned on a saved voice profile (conds.pkl)
+  clone   your own voice: Chatterbox Turbo conditioned on a saved voice profile (conds.pkl).
+          Replies in Hindi (Devanagari) go to multilingual Chatterbox with the same voice
+          (conds_multi.pkl next to it), since Turbo only speaks English.
   kokoro  Kokoro (82M parameters) with a stock voice
 
 Replies are turned into WAV audio here and played by the HUD page. If the cloned voice can't
@@ -31,6 +33,11 @@ _load_lock = threading.Lock()
 _models: dict = {}            # engine -> loaded model
 _failed: dict = {}            # engine -> error text
 _clone_conds = None
+_multi = None                 # (model, conds) for non-English speech in the cloned voice
+_multi_failed: Optional[str] = None
+
+MULTI_MODEL = "mlx-community/chatterbox-fp16"
+DEVANAGARI = re.compile(r"[\u0900-\u097F]")
 
 
 def _wanted() -> str:
@@ -86,6 +93,34 @@ def _get_model():
     raise RuntimeError("; ".join(f"{k}: {v}" for k, v in _failed.items()) or "no voice engine")
 
 
+def _multi_profile() -> str:
+    return os.path.join(os.path.dirname(config.voice_profile), "conds_multi.pkl")
+
+
+def _get_multi():
+    """Multilingual Chatterbox + your voice profile for it, loaded on first non-English reply."""
+    global _multi, _multi_failed
+    with _load_lock:
+        if _multi is None and _multi_failed is None:
+            try:
+                import pickle
+                from mlx_audio.tts.utils import load_model
+                from mlx_audio.tts.models.chatterbox.chatterbox import Conditionals
+                with open(_multi_profile(), "rb") as f:
+                    d = pickle.load(f)
+                _multi = (load_model(MULTI_MODEL), Conditionals(d["t3"], d["gen"]))
+            except Exception as ex:
+                _multi_failed = str(ex)
+                logger.warning("Hindi voice unavailable (%s); Hindi will use the English voice", ex)
+    return _multi
+
+
+def _hindi_text(text: str) -> str:
+    # Drop English asides like "(Yes, I will ...)" that the model adds after a Hindi reply.
+    text = re.sub(r"\([^()]*\)", lambda m: m.group(0) if DEVANAGARI.search(m.group(0)) else " ", text)
+    return _clone_text(text)
+
+
 def _clone_text(text: str) -> str:
     # Chatterbox reads symbols literally; keep it to plain spoken text.
     text = re.sub(r"[*_#`~>|]+", " ", text)
@@ -98,7 +133,13 @@ def synthesize(text: str, speed: float = 1.0) -> bytes:
     text = text.strip()[:MAX_CHARS]
     e, model = _get_model()
     with MLX_LOCK:  # MLX shares the GPU with Whisper and Ollama: one job at a time
-        if e == "clone":
+        multi = _get_multi() if e == "clone" and DEVANAGARI.search(text) else None
+        if multi:
+            mmodel, mconds = multi
+            mmodel._conds = mconds
+            chunks = [np.asarray(r.audio, dtype=np.float32).reshape(-1)
+                      for r in mmodel.generate(text=_hindi_text(text), lang_code="hi")]
+        elif e == "clone":
             model._conds = _clone_conds
             chunks = [np.asarray(r.audio, dtype=np.float32).reshape(-1)
                       for r in model.generate(text=_clone_text(text))]
@@ -128,5 +169,7 @@ def warm_up() -> None:
     started = time.monotonic()
     synthesize("Ready.")
     e = engine()
+    if e == "clone" and os.path.exists(_multi_profile()):
+        synthesize("ठीक है।")   # load the Hindi voice now, not on the first Hindi reply
     name = "your cloned voice" if e == "clone" else f"Kokoro ({config.kokoro_voice})"
     logger.info(f"Voice ready: {name} in {time.monotonic() - started:.1f}s")

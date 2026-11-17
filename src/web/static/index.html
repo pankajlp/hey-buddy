@@ -492,9 +492,10 @@
     // Voices load after the page, and change when one is downloaded
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => { cachedVoice = null; };
 
-    // Buddy's voice: Kokoro (a natural AI voice generated on this Mac by the server), or the
-    // Mac's built-in voices if Kokoro is turned off or fails.
-    let kokoroAvailable = true;
+    // Buddy's voice: generated on this Mac by the server (your cloned voice or Kokoro), or the
+    // Mac's built-in voices if that is turned off or fails. A failure only pauses server speech
+    // for a minute, so a restarted or upgraded server is picked up without reloading the page.
+    let serverVoiceRetryAt = 0;
     let currentAudio = null;
     let speechSeq = 0;   // newer speech cancels older speech that is still being generated
 
@@ -525,14 +526,14 @@
       // the time to generate the audio; it's replaced by the real length once that's known.
       speakingUntil = Date.now() + (spoken.length / 13) * 1000 + 3000;
 
-      if (kokoroAvailable) {
+      if (Date.now() >= serverVoiceRetryAt) {
         try {
           const res = await fetch('/api/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: spoken, speed: rate }),
           });
-          if (res.status === 503) kokoroAvailable = false;   // turned off or not installed
+          if (res.status === 503) serverVoiceRetryAt = Date.now() + 60000;   // off or loading: retry in a minute
           if (!res.ok) throw new Error(`voice server answered ${res.status}`);
           const blob = await res.blob();
           if (mine !== speechSeq) return;   // something newer is being said
