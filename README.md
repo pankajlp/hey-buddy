@@ -23,7 +23,8 @@ Hey Buddy can control your Mac by voice. It's built to be careful, but it is exp
 
 - **It can run commands and click for you.** Shell commands, AppleScript, clicks, and keystrokes need your
   approval (a spoken "yes" approves a whole task). Deleting files, `sudo`, quitting apps, sending/posting/
-  buying on web pages, and similar actions always need a click. Safe mode is `safe_mode` in `src/config.py`.
+  buying on web pages, and similar actions always ask again, one by one: Buddy says exactly what it will do,
+  and only a short, clear "yes" (or a click) approves it. Safe mode is `safe_mode` in `src/config.py`.
 - **Anyone near your Mac can talk to it** while Hands-free is on, especially during the 8-second follow-up
   window. Say "thanks" to end a conversation.
 - **Gmail**: read and draft only. Buddy has no send function, but Google's draft permission technically

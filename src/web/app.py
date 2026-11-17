@@ -283,14 +283,13 @@ async def websocket_endpoint(websocket: WebSocket):
         return asyncio.run_coroutine_threadsafe(ask_user(request), loop).result()
 
     def confirm(tool_name: str, args: Dict[str, Any], reason: Optional[str]) -> bool:
-        # One action; high-risk ones must be approved by click, never by voice
-        return ask_user_blocking({"kind": "action", "name": tool_name, "args": args,
-                                  "reason": reason, "voice_ok": reason is None})
+        # One action. High-risk ones (reason set) can be answered by voice too, but the page
+        # says exactly what will happen and only takes a short, clear "yes"
+        return ask_user_blocking({"kind": "action", "name": tool_name, "args": args, "reason": reason})
 
     def confirm_task(plan: str, tool_name: str, args: Dict[str, Any]) -> bool:
         # The whole task; can be approved by voice ("yes, go ahead")
-        return ask_user_blocking({"kind": "task", "plan": plan, "name": tool_name, "args": args,
-                                  "voice_ok": True})
+        return ask_user_blocking({"kind": "task", "plan": plan, "name": tool_name, "args": args})
 
     callbacks = dict(
         on_thought=lambda t: sync_send("thought", t),

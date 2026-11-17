@@ -1032,9 +1032,15 @@
       // A spoken answer to "Should I go ahead?"
       if (pendingVoiceConfirm) {
         if (!text) return idleStatus();
-        const { card, id } = pendingVoiceConfirm;
+        const { card, id, strict } = pendingVoiceConfirm;
         // Phrases like "no problem" mean yes
         const answer = text.replace(/\b(no problem|no worries|no issues?|not a problem|why not|koi baat nahi)\b/gi, ' yes ');
+        const words = text.trim().split(/\s+/).length;
+        if (strict && words > 4 && !SAY_NO.test(answer)) {
+          setHandsFreeStatus('This one needs a short answer: say just "yes" or "no"', 'attentive');
+          hfLog(`risky action: answer too long to count as yes: "${text}"`);
+          return;
+        }
         if (SAY_NO.test(answer) || SAY_YES.test(answer)) {
           const approved = !SAY_NO.test(answer);
           hfLog(`voice ${approved ? 'approved' : 'declined'} the task, heard: "${text}"`);
@@ -1098,8 +1104,10 @@
     }
 
     // Called when Buddy asks for approval; lets a spoken yes/no answer it
-    function expectVoiceConfirm(id, card, spokenQuestion) {
-      pendingVoiceConfirm = { id, card };
+    // strict: risky actions only take a short, clear answer ("yes", "yes go ahead"), so speech
+    // from a video or someone else in the room can't approve them by accident
+    function expectVoiceConfirm(id, card, spokenQuestion, strict = false) {
+      pendingVoiceConfirm = { id, card, strict };
       speakBrowser(spokenQuestion, 1.25);
       if (handsFree) idleStatus();
     }
@@ -1223,8 +1231,8 @@
         title.textContent = `🗣️ ${data.plan}`;
         note.textContent = 'Say "yes" or "no", or click. Once approved, this task\'s actions run without asking again (risky ones still ask).';
       } else {
-        title.textContent = `⚠️ Allow ${data.name}?`;
-        note.textContent = data.reason ? `${data.reason} Click to approve; voice isn't accepted for this.` : '';
+        title.textContent = `⚠️ ${describeAction(data)}?`;
+        note.textContent = data.reason ? `${data.reason} Say just "yes" or "no", or click.` : 'Say "yes" or "no", or click.';
       }
 
       const buttons = document.createElement('div');
@@ -1241,10 +1249,28 @@
       chat.appendChild(card);
       chat.scrollTop = chat.scrollHeight;
 
-      if (data.voice_ok) {
-        expectVoiceConfirm(data.id, card, data.kind === 'task' ? data.plan : `Should I run ${data.name.replace(/_/g, ' ')}?`);
+      if (data.kind === 'task') {
+        expectVoiceConfirm(data.id, card, data.plan);
       } else {
-        speakBrowser('This one needs a click to approve.');
+        const why = data.reason ? `${data.reason} ` : '';
+        expectVoiceConfirm(data.id, card, `${why}${describeAction(data)}? Say yes or no.`, Boolean(data.reason));
+      }
+    }
+
+    // What an action will do, in words Buddy can say aloud: "Click Send", "Press Command Q"
+    function describeAction(data) {
+      const a = data.args || {};
+      const short = (s, n = 80) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
+      switch (data.name) {
+        case 'click_on_page': return `Click "${short(a.name)}"`;
+        case 'type_on_page': return `Type "${short(a.text, 60)}" into ${short(a.field, 40)}${a.submit === false ? '' : ' and press Enter'}`;
+        case 'linkedin_write': return `Type a draft into ${short(a.field, 40)} on LinkedIn`;
+        case 'gmail_draft': return `Save a Gmail draft${a.to ? ' to ' + short(a.to, 40) : ''}`;
+        case 'keyboard_action': return `Press ${[...(a.modifiers || []), a.key].filter(Boolean).join(' ')}`;
+        case 'shell_execute': return `Run the command: ${short(a.command)}`;
+        case 'applescript_execute': return 'Run an AppleScript';
+        case 'quit_app': return `Quit ${short(a.app || a.name, 40)}`;
+        default: return `Run ${data.name.replace(/_/g, ' ')}`;
       }
     }
 
