@@ -106,7 +106,7 @@ Send, Post, Connect, or Follow; those always need your click.
 ### Starts automatically at login
 Two LaunchAgents in `~/Library/LaunchAgents/`:
 - `com.heybuddy.web.plist`: runs the server (restarts it if it crashes). Logs: `~/Library/Logs/heybuddy.log`.
-- `com.heybuddy.window.plist`: runs `scripts/open_window.sh`, which opens the page in its own compact Chrome window on the right edge of the screen (skipped if one is already open).
+- `com.heybuddy.window.plist`: runs `scripts/open_window.sh`, which opens the page in its own compact Chrome window on the right edge of the screen (skipped if one is already open). It checks again every 15 seconds, so if the window is closed it comes back on its own. To keep it closed, `touch ~/Library/Application\ Support/HeyBuddy/window-off`; delete that file to turn reopening back on.
 
 Only one open page listens for "Hey Buddy" at a time; the newest one takes over the microphone.
 

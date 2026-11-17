@@ -5,7 +5,8 @@
     <key>Label</key>
     <string>com.heybuddy.window</string>
 
-    <!-- Opens Hey Buddy's page at login (the server itself is com.heybuddy.web) -->
+    <!-- Opens Hey Buddy's page at login, and reopens it within 15 s if it is closed
+         (the server itself is com.heybuddy.web) -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
@@ -14,6 +15,8 @@
 
     <key>RunAtLoad</key>
     <true/>
+    <key>StartInterval</key>
+    <integer>15</integer>
 
     <key>StandardOutPath</key>
     <string>__HOME__/Library/Logs/heybuddy.log</string>

@@ -11,6 +11,11 @@ for label in com.heybuddy.web com.heybuddy.window; do
     "$PROJECT_DIR/scripts/launchagents/$label.plist.template" > "$AGENTS/$label.plist"
   plutil -lint -s "$AGENTS/$label.plist"
   launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+  # bootout returns before the old copy has fully stopped; wait for it so bootstrap doesn't fail
+  for _ in $(seq 1 50); do
+    launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 || break
+    sleep 0.2
+  done
   launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist"
   echo "Installed $label"
 done

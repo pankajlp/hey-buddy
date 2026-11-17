@@ -1,7 +1,13 @@
 #!/bin/bash
 # Opens Hey Buddy's page in its own compact browser window once the server is up.
-# Runs at login (LaunchAgent com.heybuddy.window) and can be run by hand.
+# Runs at login and every 15 s after (LaunchAgent com.heybuddy.window), so a closed window
+# comes back on its own. Does nothing if the window is already open. Can be run by hand.
+#
+# To keep the window closed:  touch ~/Library/Application\ Support/HeyBuddy/window-off
+# To bring it back:           rm ~/Library/Application\ Support/HeyBuddy/window-off
 URL="http://127.0.0.1:8765"
+OFF_SWITCH="$HOME/Library/Application Support/HeyBuddy/window-off"
+[ -e "$OFF_SWITCH" ] && [ "${1:-}" != "--force" ] && exit 0
 
 # Wait up to 90 s for the server (it starts at login too)
 for _ in $(seq 1 90); do

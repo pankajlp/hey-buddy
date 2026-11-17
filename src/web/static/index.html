@@ -459,6 +459,31 @@
       };
     }
 
+    // The most natural English voice on this Mac. Only on-device voices: online ones (e.g.
+    // "Google US English") would send every reply to a server. Premium and Enhanced voices are
+    // free downloads in System Settings > Accessibility > Spoken Content > System voice.
+    const NICE_VOICES = ['Ava', 'Zoe', 'Evan', 'Nathan', 'Noelle', 'Samantha', 'Isha', 'Rishi', 'Serena', 'Jamie'];
+    let cachedVoice = null;
+    function bestVoice() {
+      if (cachedVoice) return cachedVoice;
+      const score = v => {
+        if (!v.lang.startsWith('en') || !v.localService) return -1;
+        let s = 0;
+        if (/premium/i.test(v.name)) s += 100;
+        else if (/enhanced/i.test(v.name)) s += 50;
+        const nice = NICE_VOICES.findIndex(n => v.name.startsWith(n));
+        if (nice >= 0) s += 20 - nice;
+        return s;
+      };
+      const ranked = window.speechSynthesis.getVoices().map(v => [score(v), v]).filter(([s]) => s >= 0)
+        .sort((a, b) => b[0] - a[0]);
+      cachedVoice = ranked.length ? ranked[0][1] : null;
+      if (cachedVoice) console.log('Buddy voice:', cachedVoice.name);
+      return cachedVoice;
+    }
+    // Voices load after the page, and change when one is downloaded
+    if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => { cachedVoice = null; };
+
     function speakBrowser(text, rate = 1.05) {
       if (!window.speechSynthesis) return;
       try {
@@ -480,10 +505,8 @@
         speakingUntil = Date.now() + (spoken.length / 13) * 1000 + 2000;
         utter.onend = utter.onerror = () => { speakingUntil = Date.now() + 400; };
         
-        // Find natural English voice if available
-        const voices = window.speechSynthesis.getVoices();
-        const preferred = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Siri') || v.name.includes('Natural')));
-        if (preferred) utter.voice = preferred;
+        const voice = bestVoice();
+        if (voice) utter.voice = voice;
 
         window.speechSynthesis.speak(utter);
       } catch (e) {
