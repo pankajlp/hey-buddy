@@ -10,14 +10,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.agents.orchestrator import Orchestrator
 from src.config import config, env
 from src.core.ollama_client import OllamaClient
-from src.system import transcriber
+from src.system import transcriber, tts
 from src.system.mac_bridge import MacBridge
 from src.system.voice import VoiceEngine
 from src.web.mascot import MASCOT_FACES
@@ -113,14 +113,34 @@ async def speak_text(data: Dict[str, str]):
         VoiceEngine.speak(text)
     return {"status": "ok"}
 
+@app.post("/api/tts")
+async def text_to_speech(data: Dict[str, Any]):
+    """Buddy's reply as WAV audio in the Kokoro voice; 503 tells the page to use the system voice."""
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return JSONResponse({"error": "no text"}, status_code=400)
+    if not tts.enabled():
+        return JSONResponse({"error": "kokoro disabled"}, status_code=503)
+    try:
+        speed = float(data.get("speed", 1.0))
+    except (TypeError, ValueError):
+        speed = 1.0
+    try:
+        audio = await asyncio.to_thread(tts.synthesize, text, speed)
+    except Exception as e:
+        logger.warning(f"Kokoro speech failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+    return Response(content=audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
 @app.on_event("startup")
 async def load_speech_model():
-    # Load Whisper in the background so the first voice request isn't slow
+    # Load Whisper and the voice in the background so the first request isn't slow
     async def warm():
-        try:
-            await asyncio.to_thread(transcriber.warm_up)
-        except Exception as e:
-            logger.error(f"Whisper failed to load: {e}")
+        for name, load in (("Whisper", transcriber.warm_up), ("Kokoro voice", tts.warm_up)):
+            try:
+                await asyncio.to_thread(load)
+            except Exception as e:
+                logger.error(f"{name} failed to load: {e}")
     asyncio.create_task(warm())
 
 MAX_UTTERANCE_BYTES = 16000 * 2 * 30  # 30 s of 16 kHz 16-bit audio

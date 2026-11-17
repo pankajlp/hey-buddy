@@ -9,6 +9,14 @@ numpy==2.5.3
 
 # On-device speech recognition (Apple Silicon)
 mlx-whisper==0.4.3
+# Kokoro voice (on-device text-to-speech). misaki[en] doesn't build on Python 3.14, so its
+# English pieces are listed one by one; the spaCy English model is fetched on first use.
+mlx-audio==0.6.6
+misaki==0.7.4
+num2words==0.5.14
+spacy==3.8.18
+phonemizer-fork==3.3.2
+espeakng-loader==0.2.4
 
 # Gmail (optional)
 google-api-python-client==2.200.0

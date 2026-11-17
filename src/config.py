@@ -35,6 +35,10 @@ class Config(BaseModel):
     voice_enabled: bool = env("VOICE", default="true").lower() in ("true", "1", "yes")
     voice_name: str = env("VOICE_NAME", default="")  # empty = system default
     voice_rate: int = env_int("VOICE_RATE", 195)
+    # Voice of the HUD page: "kokoro" (natural, on-device AI voice) or "system" (the Mac's built-in voices)
+    tts_engine: str = env("TTS", default="kokoro").lower()
+    # Kokoro voice: af_heart, af_bella, am_michael (US); bf_emma, bm_george (UK); first letter = accent
+    kokoro_voice: str = env("KOKORO_VOICE", default="af_heart")
     
     # Behavior & Safety
     auto_screen_context: bool = True

@@ -6,6 +6,9 @@ drafts emails, and reads LinkedIn), asking before anything risky.
 
 - **Local models**: chat and tool use through [Ollama](https://ollama.com) (`qwen3-coder`); speech-to-text with
   Whisper large-v3-turbo on Apple Silicon (`mlx-whisper`). Your voice never leaves the Mac.
+- **Natural voice**: replies are spoken by [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), a small
+  AI voice that also runs on the Mac (`mlx-audio`). Pick a voice with `BUDDY_KOKORO_VOICE` (default `af_heart`;
+  e.g. `bf_emma` for British), or set `BUDDY_TTS=system` to use the Mac's built-in voices.
 - **Multi-agent**: a router sends each request to a specialist (Music, Apps, System, Browser, Mail, LinkedIn,
   Talk, Coder) or to a general agent that can read the screen and click. Specialists use fixed-code skills
   (e.g. `play_music`, `window_action`, `youtube_play`) instead of improvising.
@@ -144,6 +147,7 @@ voice / text ─► Router ─► specialist agent ─► skills (fixed code) / 
 - **Orchestrator** (`src/agents/orchestrator.py`): runs the router, the chosen agent, and hand-offs. The UI's Auto mode uses it; Talk / Agent / Coder pin a mode.
 - **Skills** (`src/skills/`): deterministic actions registered with `@skill(...)`; `needs_approval=True` makes a skill part of an approved task.
 - **Voice** (`src/system/transcriber.py`): Whisper large-v3-turbo on-device; the page detects speech and sends each utterance.
+- **Speech** (`src/system/tts.py`): Kokoro generates each reply as audio at `/api/tts`; the page falls back to the system voice if it fails.
 
 ```
 src/

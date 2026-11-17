@@ -30,6 +30,7 @@ HALLUCINATIONS = {
 }
 
 _lock = threading.Lock()
+MLX_LOCK = _lock  # shared with the Kokoro voice (src/system/tts.py)
 _warmed = False
 
 

@@ -484,30 +484,86 @@
     // Voices load after the page, and change when one is downloaded
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => { cachedVoice = null; };
 
-    function speakBrowser(text, rate = 1.05) {
+    // Buddy's voice: Kokoro (a natural AI voice generated on this Mac by the server), or the
+    // Mac's built-in voices if Kokoro is turned off or fails.
+    let kokoroAvailable = true;
+    let currentAudio = null;
+    let speechSeq = 0;   // newer speech cancels older speech that is still being generated
+
+    function stopSpeaking() {
+      speechSeq++;
+      try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
+      speakingUntil = 0;
+    }
+
+    async function speakBrowser(text, rate = 1.05) {
+      // Clean markdown symbols for natural speech
+      const clean = text
+        .replace(/```[\s\S]*?```/g, 'code block omitted')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/[*_#]/g, '')
+        .replace(/\[\s*⚡[\s\S]*?⚡\s*\]/g, '')
+        .trim();
+      if (!clean) return;
+      const spoken = clean.substring(0, 400);
+
+      stopSpeaking();
+      const mine = speechSeq;
+      // Track speaking ourselves, so the mic ignores Buddy's own voice. This estimate covers
+      // the time to generate the audio; it's replaced by the real length once that's known.
+      speakingUntil = Date.now() + (spoken.length / 13) * 1000 + 3000;
+
+      if (kokoroAvailable) {
+        try {
+          const res = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: spoken, speed: rate }),
+          });
+          if (res.status === 503) kokoroAvailable = false;   // turned off or not installed
+          if (!res.ok) throw new Error(`voice server answered ${res.status}`);
+          const blob = await res.blob();
+          if (mine !== speechSeq) return;   // something newer is being said
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          currentAudio = audio;
+          const finished = () => {
+            URL.revokeObjectURL(url);
+            if (currentAudio === audio) {
+              currentAudio = null;
+              speakingUntil = Date.now() + 400;
+            }
+          };
+          audio.onended = finished;
+          audio.onerror = finished;
+          audio.onloadedmetadata = () => {
+            if (currentAudio === audio && isFinite(audio.duration)) {
+              speakingUntil = Date.now() + audio.duration * 1000 + 1500;
+            }
+          };
+          await audio.play();
+          return;
+        } catch (e) {
+          if (mine !== speechSeq) return;
+          console.warn('Kokoro voice unavailable, using the system voice:', e);
+        }
+      }
+      speakSystem(spoken, rate);
+    }
+
+    function speakSystem(spoken, rate) {
       if (!window.speechSynthesis) return;
       try {
-        window.speechSynthesis.cancel();
-        // Clean markdown symbols for natural speech
-        const clean = text
-          .replace(/```[\s\S]*?```/g, 'code block omitted')
-          .replace(/`([^`]+)`/g, '$1')
-          .replace(/[*_#]/g, '')
-          .replace(/\[\s*⚡[\s\S]*?⚡\s*\]/g, '')
-          .trim();
-        if (!clean) return;
-
-        const spoken = clean.substring(0, 400);
         const utter = new SpeechSynthesisUtterance(spoken);
         utter.rate = rate;
-        // Track speaking ourselves: speechSynthesis.speaking can stay stuck at true.
-        // The time estimate is a fallback in case onend never fires.
         speakingUntil = Date.now() + (spoken.length / 13) * 1000 + 2000;
         utter.onend = utter.onerror = () => { speakingUntil = Date.now() + 400; };
-        
         const voice = bestVoice();
         if (voice) utter.voice = voice;
-
         window.speechSynthesis.speak(utter);
       } catch (e) {
         console.warn('Speech synthesis error:', e);
@@ -515,7 +571,7 @@
     }
 
     function testSpeaker() {
-      speakBrowser("Hey! Audio test is working loud and clear on your Mac. ^ ω ^");
+      speakBrowser("Hey! Audio test is working loud and clear on your Mac.");
     }
 
     function handleServerEvent(type, data) {
@@ -1002,8 +1058,7 @@
 
       // Started speaking during a follow-up / "I'm listening" window: no wake word needed
       if ((inWindow || Date.now() < speakingUntil) && END_CONVERSATION.test(text)) {
-        try { window.speechSynthesis.cancel(); } catch (e) {}
-        speakingUntil = 0;
+        stopSpeaking();
         hfAttentiveUntil = 0;
         hfFollowUp = false;
         setHandsFreeStatus('Okay. Say "Hey Buddy" when you need me');
