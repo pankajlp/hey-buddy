@@ -35,8 +35,13 @@ class Config(BaseModel):
     voice_enabled: bool = env("VOICE", default="true").lower() in ("true", "1", "yes")
     voice_name: str = env("VOICE_NAME", default="")  # empty = system default
     voice_rate: int = env_int("VOICE_RATE", 195)
-    # Voice of the HUD page: "kokoro" (natural, on-device AI voice) or "system" (the Mac's built-in voices)
-    tts_engine: str = env("TTS", default="kokoro").lower()
+    # Voice of the HUD page: "clone" (your own cloned voice), "kokoro" (natural, on-device AI voice)
+    # or "system" (the Mac's built-in voices). "auto" = clone if a voice profile exists, else kokoro.
+    tts_engine: str = env("TTS", default="auto").lower()
+    # Cloned-voice profile (conds.pkl built by Voice Twin). Personal data: lives outside the repo.
+    voice_profile: str = env("VOICE_PROFILE", default=os.path.expanduser(
+        "~/Library/Application Support/HeyBuddy/voice/conds.pkl"))
+    clone_model: str = env("CLONE_MODEL", default="mlx-community/chatterbox-turbo-fp16")
     # Kokoro voice: af_heart, af_bella, am_michael (US); bf_emma, bm_george (UK); first letter = accent
     kokoro_voice: str = env("KOKORO_VOICE", default="af_heart")
     

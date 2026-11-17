@@ -143,7 +143,7 @@ async def text_to_speech(data: Dict[str, Any]):
     try:
         audio = await asyncio.to_thread(tts.synthesize, text, speed)
     except Exception as e:
-        logger.warning(f"Kokoro speech failed: {e}")
+        logger.warning(f"Voice synthesis failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=503)
     return Response(content=audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
@@ -151,7 +151,7 @@ async def text_to_speech(data: Dict[str, Any]):
 async def load_speech_model():
     # Load Whisper and the voice in the background so the first request isn't slow
     async def warm():
-        for name, load in (("Whisper", transcriber.warm_up), ("Kokoro voice", tts.warm_up)):
+        for name, load in (("Whisper", transcriber.warm_up), ("Voice", tts.warm_up)):
             try:
                 await asyncio.to_thread(load)
             except Exception as e:

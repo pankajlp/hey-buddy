@@ -9,6 +9,11 @@ drafts emails, and reads LinkedIn), asking before anything risky.
 - **Natural voice**: replies are spoken by [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), a small
   AI voice that also runs on the Mac (`mlx-audio`). Pick a voice with `BUDDY_KOKORO_VOICE` (default `af_heart`;
   e.g. `bf_emma` for British), or set `BUDDY_TTS=system` to use the Mac's built-in voices.
+  It can also talk in **your own voice**: build a voice profile with a zero-shot cloner
+  (Chatterbox Turbo, e.g. the Voice Twin app) and put its `conds.pkl` at
+  `~/Library/Application Support/HeyBuddy/voice/conds.pkl` (or point `BUDDY_VOICE_PROFILE` at it).
+  Buddy then uses it automatically; `BUDDY_TTS=kokoro` switches back. Only clone a voice you own
+  or have permission to use.
 - **Multi-agent**: a router sends each request to a specialist (Music, Apps, System, Browser, Mail, LinkedIn,
   Talk, Coder) or to a general agent that can read the screen and click. Specialists use fixed-code skills
   (e.g. `play_music`, `window_action`, `youtube_play`) instead of improvising.
