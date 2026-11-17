@@ -253,7 +253,8 @@ def read_page() -> str:
     res = _helper("web_text", BROWSERS[browser])
     if "error" in res:
         return f"Couldn't read the page: {res['error']}"
-    return f"Page: {res.get('page', '')}\n{res.get('text', '')[:4000]}"
+    url = _page_url(browser)
+    return f"Page: {res.get('page', '')}\nURL: {url}\n{res.get('text', '')[:4000]}"
 
 
 NAV_KEYS = {

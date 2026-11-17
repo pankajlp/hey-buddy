@@ -1,0 +1,10 @@
+{"id":"music_now_playing","suite":"general","prompt":"What song is playing right now?","tools":["now_playing"],"evidence":"Nothing is playing|Playing:|Paused:","changes_state":false}
+{"id":"system_status","suite":"general","prompt":"Tell me my Mac's battery, volume, Wi-Fi, and dark mode status.","tools":["system_status"],"evidence":"Battery|Volume|Wi-Fi|Dark mode","changes_state":false}
+{"id":"running_apps","suite":"general","prompt":"Which apps are open right now?","tools":["list_running_apps"],"evidence":"Open apps:","changes_state":false}
+{"id":"recent_inbox","suite":"general","prompt":"Find the newest email in my inbox from the last 7 days and tell me its sender and subject.","tools":["gmail_search"],"evidence":"email|No emails match","changes_state":false,"requires_gmail":true}
+{"id":"browser_search","suite":"general","prompt":"Search the web for the official Apple support page about Mac screen recording permissions.","tools":["web_search"],"evidence":"apple\\.com|Apple Support","changes_state":true}
+{"id":"open_calculator","suite":"general","prompt":"Open Calculator.","tools":["open_app"],"evidence":"front app is Calculator","changes_state":true}
+{"id":"music_play","suite":"general","prompt":"Play the song Here Comes the Sun by The Beatles in Music.","tools":["play_music"],"evidence":"Music check after action: Playing: Here Comes the Sun","changes_state":true}
+{"id":"youtube_search","suite":"general","prompt":"Open https://www.youtube.com/results?search_query=macOS+Voice+Control and tell me if search results appeared. Keep existing tabs open.","tools":["open_url"],"evidence":"youtube\\.com|YouTube","changes_state":true}
+{"id":"gmail_latest_from","suite":"general","prompt":"Find the latest email from Google in my inbox and tell me its subject and date.","tools":["gmail_search"],"evidence":"email|No emails match","changes_state":false,"requires_gmail":true}
+{"id":"linkedin_messages","suite":"general","prompt":"Open my LinkedIn messages and summarize the latest conversation.","tools":["linkedin_open","linkedin_read"],"evidence":"Page check after action:|Main content|Page:","changes_state":true,"requires_linkedin_login":true}

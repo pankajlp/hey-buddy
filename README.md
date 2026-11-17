@@ -36,7 +36,8 @@ Hey Buddy can control your Mac by voice. It's built to be careful, but it is exp
   speech recognition (which sends audio to Google) is not used.
 - **What's stored on your Mac**: `~/Library/Logs/heybuddy.log` keeps your requests, Buddy's actions, and the
   titles of pages it reads (including incognito pages). `~/Library/Application Support/HeyBuddy/` holds your
-  settings, Google sign-in, and the last few conversation turns.
+  settings, Google sign-in, and the last few conversation turns. If you report a mistake, a local learning file
+  stores tool names and status by default; exact request and reply text are included only if you opt in.
 
 ---
 
@@ -124,6 +125,17 @@ In the web HUD, click **🎧 Hands-free** and say "Hey Buddy" followed by your r
 - Conversation: after Buddy answers, it listens ~8 s for a follow-up without "Hey Buddy".
   Say "thanks" / "that's all" / "stop" (or stay quiet) to end it.
 - Tuning: `SOFT_END_MS`, `COMPLETE_END_MS`, `HARD_END_MS`, `FOLLOWUP_MS` in `src/web/static/index.html`.
+
+### Learning from a mistake
+After a reply, click **That went wrong** to save a local report. Page and email contents are excluded. You can
+add a short correction and optionally check **Remember this correction** to apply it to future tasks handled by
+the same agent area. Use **View saved lessons** to remove a lesson. Exact request and reply text are saved only
+when you explicitly select that option. Reports and lessons are stored in
+`~/Library/Application Support/HeyBuddy/learning.json` with user-only file permissions.
+You can also check **Add this request to my general evaluation scorecard**, edit the repeatable task, and enter
+a phrase that should appear in Buddy's reply or action evidence. This separately saves the task text locally so
+you can rerun it with `.venv/bin/python evals/run_scorecard.py --personal --allow-actions`; Buddy asks before actions.
+Personal task results are stored under `~/Library/Application Support/HeyBuddy/evaluation-results/`.
 
 ---
 

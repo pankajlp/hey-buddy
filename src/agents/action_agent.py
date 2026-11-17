@@ -19,6 +19,9 @@ Guidelines:
    - When you must click: first bring the right app to the front with 'switch_to_app', then call 'read_screen' (it reads only the front window and names the app), then 'mouse_action' at a returned position. Clicks at positions that read_screen didn't return are refused.
    - Check the app named in each click/typing result. If it's not the app you meant, stop and switch to the right one before typing.
    - After a click or keystroke that should change the screen, call 'read_screen' again to verify it worked.
+   - State-changing tools return a fresh post-action check when available. Read that evidence before the next step.
+     If it contradicts the intended result, recover or try another safe method. If verification is unavailable,
+     say so and never present the action as confirmed.
 3. Observe Before & After: Verify the result of an action before proceeding to the next step.
 4. Completion: When the task is done, call 'task_completed' with a one-sentence result. Don't call 'speak_to_user' for the result; it is spoken automatically.
 5. Always preserve user data and avoid dangerous commands.

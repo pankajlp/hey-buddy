@@ -290,6 +290,63 @@ def tool_specs(names: List[str]) -> List[Dict[str, Any]]:
 # Keep tool output from flooding the model's context window.
 MAX_TOOL_OUTPUT_CHARS = 8000
 
+# Actions whose result can be checked independently of the text returned by the
+# action itself. The observation is returned to the agent before it plans the
+# next step, so it can recover when the action did not produce the expected UI.
+_PAGE_ACTIONS = {
+    "open_url", "web_search", "switch_tab", "close_tab", "click_on_page",
+    "type_on_page", "browser_navigate", "new_window", "youtube_play",
+    "linkedin_open", "linkedin_search", "linkedin_write",
+}
+_MUSIC_ACTIONS = {"play_music", "play_playlist", "music_control"}
+_APP_ACTIONS = {"open_app", "switch_to_app", "quit_app", "hide_app", "window_action"}
+_SCREEN_ACTIONS = {"mouse_action", "keyboard_action", "open_app_or_file"}
+_SYSTEM_STATUS_ACTIONS = {"set_volume", "set_dark_mode", "set_wifi"}
+
+
+def _verify_action(tool_name: str, args: Dict[str, Any], result: str) -> Optional[str]:
+    """Return fresh evidence after a state-changing action, when available."""
+    if re.search(r"\b(FAILED|REFUSED|BLOCKED|DENIED|Error executing|AppleScript Error|Could not|Couldn't|No .* found)\b",
+                 result, re.I):
+        return None
+    try:
+        if tool_name in _PAGE_ACTIONS:
+            observation = SKILLS["read_page"].func()
+            if observation.startswith("Couldn't read"):
+                return f"Page check unavailable: {observation}"
+            return f"Page check after action:\n{observation[:2500]}"
+        if tool_name in _MUSIC_ACTIONS:
+            observation = SKILLS["now_playing"].func()
+            return f"Music check after action: {observation}"
+        if tool_name in _APP_ACTIONS or tool_name == "open_app_or_file":
+            if tool_name == "quit_app":
+                observation = SKILLS["list_running_apps"].func()
+                return f"App check after quit action: {observation}"
+            front = MacBridge.front_window()
+            frame = (f"frame is x={front['x']}, y={front['y']}, "
+                     f"width={front['width']}, height={front['height']}.") if "width" in front else ""
+            return (f"Window check after action: front app is {front.get('app', 'unknown')}; "
+                    f"window is {front.get('title', '(untitled)')}; {frame}")
+        if tool_name in _SCREEN_ACTIONS:
+            screen = MacBridge.read_screen()
+            if "error" in screen:
+                return f"Screen check unavailable: {screen['error']}"
+            lines = [f"{e['text']} ({e['x']}, {e['y']})" for e in screen.get("elements", [])]
+            return (f"Screen check after action: {screen.get('app', 'unknown')} — "
+                    + ("; ".join(lines[:45]) if lines else "no readable text found."))
+        if tool_name in _SYSTEM_STATUS_ACTIONS:
+            return f"System check after action: {SKILLS['system_status'].func()}"
+        if tool_name in ("shell_execute", "applescript_execute"):
+            return ("No generic verification is possible for this custom command. Before continuing, "
+                    "use a read-only check suited to its intended effect.")
+        if tool_name in SKILLS and not SKILLS[tool_name].read_only:
+            return ("No automatic check is configured for this action. Before continuing, use a "
+                    "read-only tool suited to its intended effect; don't treat the action's own reply as proof.")
+    except Exception as exc:
+        logger.warning("Post-action verification failed for %s: %s", tool_name, exc)
+        return f"Action ran, but its result could not be independently checked: {exc}"
+    return None
+
 def _truncate(output: str) -> str:
     if len(output) <= MAX_TOOL_OUTPUT_CHARS:
         return output
@@ -300,7 +357,11 @@ def _truncate(output: str) -> str:
 class ToolDispatcher:
     @staticmethod
     def execute(tool_name: str, args: Dict[str, Any], speak: bool = True) -> str:
-        return _truncate(ToolDispatcher._execute(tool_name, args, speak))
+        result = ToolDispatcher._execute(tool_name, args, speak)
+        check = _verify_action(tool_name, args, result)
+        if check:
+            result = f"{result}\n\n{check}"
+        return _truncate(result)
 
     @staticmethod
     def _execute(tool_name: str, args: Dict[str, Any], speak: bool) -> str:

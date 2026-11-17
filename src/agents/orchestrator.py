@@ -13,6 +13,7 @@ from src.agents.base_agent import BaseAgent
 from src.agents.buddy_agent import BuddyAgent
 from src.agents.coder_agent import CoderAgent
 from src.agents import memory
+from src.agents.learning import store as learning_store
 from src.agents.router import Router
 from src.system.mac_bridge import MacBridge
 from src.agents.specialists import SPECIALISTS, SpecialistAgent
@@ -34,6 +35,8 @@ PLAY_NTH_VIDEO = re.compile(
     r"^\s*(ok(ay)?,?\s+|now\s+|no,?\s+|just\s+)?(play|open|watch|start)\s+(the\s+)?(?P<n>first|second|third|fourth|fifth|top|1st|2nd|3rd|4th|5th|\d+(st|nd|rd|th)?|one|two|three|four|five)"
     r"(\s+(one|video|result|song))?(\s+instead)?[\s.!]*$", re.I)
 PLAY_ON_YOUTUBE = re.compile(r"^\s*(play|watch|put on)\s+(?P<q>.+?)\s+(on|in|from)\s+youtube[\s.!]*$", re.I)
+LIST_RUNNING_APPS = re.compile(
+    r"^\s*(what|which|list|show)\s+(apps?|applications?)\s+(are\s+)?(open|running)(\s+right\s+now)?[?!.\s]*$", re.I)
 
 
 def _spoken(result: str) -> str:
@@ -52,6 +55,8 @@ class Orchestrator:
                  **agent_callbacks: Any):
         self.router = Router()
         self.on_route = on_route
+        self.on_action = agent_callbacks.get("on_action")
+        self.on_observation = agent_callbacks.get("on_observation")
         self.agents: Dict[str, BaseAgent] = {
             "talk": BuddyAgent(**agent_callbacks),
             "general": ActionAgent(**agent_callbacks),
@@ -84,9 +89,24 @@ class Orchestrator:
             pass
         return "\n".join(parts) or None
 
+    @staticmethod
+    def _context_with_lessons(key: str, context: Optional[str]) -> Optional[str]:
+        lesson_context = learning_store.context_for(key)
+        if not lesson_context:
+            return context
+        return f"{context or ''}\n\n{lesson_context}".strip()
+
     def _fast_path(self, text: str, context: str):
         """Common requests with one obvious action run directly, without the model picking tools."""
         from src.skills.browser import youtube_play
+        from src.skills.apps import list_running_apps
+        if LIST_RUNNING_APPS.match(text):
+            if self.on_action:
+                self.on_action("list_running_apps", {})
+            result = list_running_apps()
+            if self.on_observation:
+                self.on_observation(result)
+            return "apps", result, [f"list_running_apps() -> {result[:70]}"]
         m = PLAY_NTH_VIDEO.match(text)
         on_youtube = "youtube" in context.split("Now in front:")[-1].lower() or "youtube" in memory.render(2).lower()
         if m and on_youtube:
@@ -120,13 +140,13 @@ class Orchestrator:
             key, method = route.agent, f"{route.method}, {time.monotonic() - started:.1f}s"
         self._announce(key, method)
 
-        reply = self.agents[key].run(text, speak=speak, context=context)
+        reply = self.agents[key].run(text, speak=speak, context=self._context_with_lessons(key, context))
         did = list(self.agents[key].action_log)
         if self.agents[key].handed_off:
             logger.info(f"{key} handed off: {self.agents[key].handed_off}")
             key = "general"
             self._announce(key, "handed off")
-            reply = self.agents[key].run(text, speak=speak, context=context)
+            reply = self.agents[key].run(text, speak=speak, context=self._context_with_lessons(key, context))
             did += self.agents[key].action_log
 
         memory.add(text, key, did, reply)

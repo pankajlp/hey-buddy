@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.agents.orchestrator import Orchestrator
+from src.agents.learning import store as learning_store
 from src.config import config, env
 from src.core.ollama_client import OllamaClient
 from src.system import transcriber, tts
@@ -80,6 +81,20 @@ class ChatRequest(BaseModel):
     message: str
     mode: str = "auto"  # 'auto' (router picks), or a fixed 'buddy', 'agent', 'coder'
     speak: bool = True
+
+class FeedbackRequest(BaseModel):
+    trace_id: str
+    note: str = ""
+    remember: bool = False
+    include_text: bool = False
+
+class EvaluationDraftRequest(BaseModel):
+    trace_id: str
+
+class EvaluationCreateRequest(BaseModel):
+    trace_id: str
+    prompt: str
+    expected: str
 
 @app.get("/")
 async def get_index():
@@ -166,6 +181,51 @@ async def client_log(data: Dict[str, str]):
     logger.info(f"[page] {data.get('msg', '')[:300]}")
     return {"status": "ok"}
 
+@app.post("/api/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    try:
+        return learning_store.submit(req.trace_id, req.note, req.remember, req.include_text)
+    except KeyError as exc:
+        return JSONResponse({"error": str(exc.args[0])}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+@app.post("/api/evaluations/draft")
+async def get_evaluation_draft(req: EvaluationDraftRequest):
+    try:
+        return learning_store.evaluation_draft(req.trace_id)
+    except KeyError as exc:
+        return JSONResponse({"error": str(exc.args[0])}, status_code=404)
+
+@app.post("/api/evaluations")
+async def create_evaluation(req: EvaluationCreateRequest):
+    try:
+        return learning_store.add_evaluation(req.trace_id, req.prompt, req.expected)
+    except KeyError as exc:
+        return JSONResponse({"error": str(exc.args[0])}, status_code=404)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+@app.get("/api/evaluations")
+async def get_evaluations():
+    return {"tasks": learning_store.evaluation_tasks()}
+
+@app.delete("/api/evaluations/{task_id}")
+async def delete_evaluation(task_id: str):
+    if not learning_store.forget_evaluation(task_id):
+        return JSONResponse({"error": "Evaluation task not found"}, status_code=404)
+    return {"status": "deleted"}
+
+@app.get("/api/lessons")
+async def get_lessons():
+    return {"lessons": learning_store.lessons()}
+
+@app.delete("/api/lessons/{lesson_id}")
+async def delete_lesson(lesson_id: str):
+    if not learning_store.forget(lesson_id):
+        return JSONResponse({"error": "Lesson not found"}, status_code=404)
+    return {"status": "deleted"}
+
 def _mode_and_message(mode: str, message: str):
     """'agent: do X' typed in any mode forces the general agent."""
     if message.lower().startswith("agent:"):
@@ -188,35 +248,52 @@ async def http_chat(req: ChatRequest):
 
     thoughts = []
     actions = []
+    route_key = "general"
 
     def on_thought(t: str):
         thoughts.append(t)
 
     def on_action(name: str, args: dict):
         actions.append({"name": name, "args": args})
+        learning_store.record_action(trace_id, name, args)
+
+    def on_observation(output: str):
+        learning_store.record_observation(trace_id, output)
+
+    def on_route(key: str, label: str, method: str):
+        nonlocal route_key
+        route_key = key
+        learning_store.set_route(trace_id, key)
+        routes.append(label)
 
     routes = []
     mode, clean_msg = _mode_and_message(req.mode, user_msg)
+    trace_id = learning_store.begin(clean_msg)
     orchestrator = Orchestrator(
-        on_route=lambda key, label, method: routes.append(label),
+        on_route=on_route,
         tool_filter=without_speech_tool,
         on_thought=on_thought,
         on_action=on_action,
+        on_observation=on_observation,
     )
     try:
         # No confirmation channel over plain HTTP: sensitive tools are blocked in safe mode.
         response = await asyncio.to_thread(orchestrator.handle, clean_msg, mode, req.speak)
+        learning_store.finish(trace_id, response)
         return {
             "content": response,
             "thoughts": thoughts,
             "actions": actions,
             "route": " → ".join(routes),
+            "route_key": route_key,
+            "trace_id": trace_id,
             "mascot": MASCOT_FACES["happy"],
             "speak_text": response if req.speak else "",
         }
     except Exception as e:
+        learning_store.finish(trace_id, f"ERROR: {e}")
         logger.error(f"HTTP Chat error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": str(e), "trace_id": trace_id}, status_code=500)
 
 # Only one open page listens for "Hey Buddy" at a time; otherwise every open page would
 # hear the same request and run it again. connection id -> function that notifies that page.
@@ -262,6 +339,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # Pending approval requests, keyed by request id
     pending_confirms: Dict[str, asyncio.Future] = {}
     closed = False
+    active_trace: Dict[str, Optional[str]] = {"id": None}
 
     async def ask_user(request: Dict[str, Any]) -> bool:
         if closed:
@@ -291,15 +369,27 @@ async def websocket_endpoint(websocket: WebSocket):
         # The whole task; can be approved by voice ("yes, go ahead")
         return ask_user_blocking({"kind": "task", "plan": plan, "name": tool_name, "args": args})
 
+    def record_route(key: str, label: str, method: str):
+        learning_store.set_route(active_trace["id"], key)
+        sync_send("route", {"agent": key, "label": label, "method": method})
+
+    def record_action(name: str, args: Dict[str, Any]):
+        learning_store.record_action(active_trace["id"], name, args)
+        sync_send("action", {"name": name, "args": args})
+
+    def record_observation(output: str):
+        learning_store.record_observation(active_trace["id"], output)
+        sync_send("observation", output)
+
     callbacks = dict(
         on_thought=lambda t: sync_send("thought", t),
-        on_action=lambda name, args: sync_send("action", {"name": name, "args": args}),
-        on_observation=lambda o: sync_send("observation", o),
+        on_action=record_action,
+        on_observation=record_observation,
         confirm=confirm,
         confirm_task=confirm_task,
     )
     orchestrator = Orchestrator(
-        on_route=lambda key, label, method: sync_send("route", {"agent": key, "label": label, "method": method}),
+        on_route=record_route,
         tool_filter=without_speech_tool,
         **callbacks,
     )
@@ -313,6 +403,8 @@ async def websocket_endpoint(websocket: WebSocket):
             user_msg = data.get("message", "").strip()
             speak = data.get("speak", True)
             mode, clean_msg = _mode_and_message(data.get("mode", "auto"), user_msg)
+            trace_id = learning_store.begin(clean_msg)
+            active_trace["id"] = trace_id
 
             sync_send("status", {"state": "working", "mascot": MASCOT_FACES["agent_working"]})
 
@@ -321,20 +413,26 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.info(f"Request received ({mode} mode)")
             try:
                 response = await asyncio.to_thread(orchestrator.handle, clean_msg, mode, speak)
+                learning_store.finish(trace_id, response)
                 logger.info(f"Request answered in {time.monotonic() - started:.1f}s")
                 sync_send("response", {
                     "content": response,
                     "mode": mode,
                     "mascot": MASCOT_FACES["happy"],
                     "speak_text": response if speak else "",
+                    "trace_id": trace_id,
                 })
             except Exception as e:
                 logger.error(f"Agent execution error: {e}")
+                learning_store.finish(trace_id, f"ERROR: {e}")
                 sync_send("response", {
                     "content": f"Sorry, encountered an error: {e}",
                     "mode": mode,
                     "mascot": MASCOT_FACES["confused"],
+                    "trace_id": trace_id,
                 })
+            finally:
+                active_trace["id"] = None
 
             sync_send("status", {"state": "idle", "mascot": MASCOT_FACES["idle"]})
 

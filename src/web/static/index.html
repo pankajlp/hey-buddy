@@ -131,6 +131,14 @@
     .route-note { font-size: 10px; opacity: 0.6; margin: 2px 0 2px 4px; }
     .route-badge { font-size: 10px; font-weight: 600; opacity: 0.7; margin-bottom: 3px; }
     .confirm-note { font-size: 11px; opacity: 0.75; margin: 4px 0; }
+    .feedback-button { margin-top: 7px; padding: 3px 8px; border: 1px solid #d2d2d7; border-radius: 6px; background: #fff; color: #555; font-size: 11px; cursor: pointer; }
+    .feedback-panel { margin-top: 8px; padding: 9px; border: 1px solid #ddd; border-radius: 8px; background: #fff; font-size: 11px; }
+    .feedback-panel textarea { width: 100%; min-height: 58px; margin: 5px 0; padding: 6px; border: 1px solid #ccc; border-radius: 5px; font: inherit; resize: vertical; box-sizing: border-box; }
+    .feedback-panel label { display: block; margin: 5px 0; color: #555; }
+    .feedback-panel .feedback-submit { padding: 4px 9px; margin-top: 4px; border: 0; border-radius: 5px; background: #007aff; color: white; cursor: pointer; }
+    .feedback-status { margin-top: 6px; color: #555; }
+    .lesson-row { display: flex; align-items: start; gap: 6px; padding: 5px 0; border-top: 1px solid #eee; }
+    .lesson-row span { flex: 1; }
 
     .mode-selector {
       display: flex;
@@ -632,6 +640,7 @@
         replayBtn.textContent = '🔊 Listen';
         replayBtn.onclick = () => speakBrowser(data.content);
         msg.appendChild(replayBtn);
+        if (data.trace_id) addFeedbackControls(msg, data.trace_id);
 
         chat.appendChild(msg);
         face.textContent = data.mascot || '^ ω ^';
@@ -658,6 +667,152 @@
         if (data.mascot) face.textContent = data.mascot;
       }
       chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addFeedbackControls(messageEl, traceId) {
+      const trigger = document.createElement('button');
+      trigger.className = 'feedback-button';
+      trigger.textContent = 'That went wrong';
+      trigger.onclick = () => {
+        if (messageEl.querySelector('.feedback-panel')) return;
+        const panel = document.createElement('div');
+        panel.className = 'feedback-panel';
+        const intro = document.createElement('div');
+        intro.textContent = 'Save a local report. Page and email contents are excluded; avoid names or document text in your correction.';
+        const note = document.createElement('textarea');
+        note.placeholder = 'What should Buddy have done instead? (optional)';
+        const rememberLabel = document.createElement('label');
+        const remember = document.createElement('input');
+        remember.type = 'checkbox';
+        rememberLabel.append(remember, document.createTextNode(' Remember this correction for similar tasks in this area'));
+        const includeLabel = document.createElement('label');
+        const include = document.createElement('input');
+        include.type = 'checkbox';
+        includeLabel.append(include, document.createTextNode(' Include the exact request and Buddy reply in the local report'));
+        const evalLabel = document.createElement('label');
+        const addEval = document.createElement('input');
+        addEval.type = 'checkbox';
+        evalLabel.append(addEval, document.createTextNode(' Add this request to my general evaluation scorecard'));
+        const evalFields = document.createElement('div');
+        evalFields.hidden = true;
+        const evalPrompt = document.createElement('textarea');
+        evalPrompt.placeholder = 'Review or edit the task Buddy should repeat';
+        const expected = document.createElement('input');
+        expected.type = 'text';
+        expected.placeholder = 'A phrase Buddy must show as evidence of success';
+        expected.style.cssText = 'width:100%;box-sizing:border-box;padding:6px;border:1px solid #ccc;border-radius:5px;margin:4px 0;font:inherit';
+        const evalHint = document.createElement('div');
+        evalHint.textContent = 'The exact task and success phrase are saved locally. Evaluation tasks may take actions and always ask before each one.';
+        evalHint.style.color = '#666';
+        evalFields.append(evalPrompt, expected, evalHint);
+        addEval.onchange = async () => {
+          evalFields.hidden = !addEval.checked;
+          if (!addEval.checked || evalPrompt.value) return;
+          try {
+            const draftRes = await fetch('/api/evaluations/draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trace_id: traceId }) });
+            const draft = await draftRes.json();
+            if (!draftRes.ok) throw new Error(draft.error || 'Could not load the task.');
+            evalPrompt.value = draft.prompt;
+          } catch (err) { status.textContent = err.message; }
+        };
+        const submit = document.createElement('button');
+        submit.className = 'feedback-submit';
+        submit.textContent = 'Save report';
+        const status = document.createElement('div');
+        status.className = 'feedback-status';
+        submit.onclick = async () => {
+          if (remember.checked && !note.value.trim()) {
+            status.textContent = 'Add the correction you want Buddy to remember.';
+            return;
+          }
+          if (addEval.checked && (!evalPrompt.value.trim() || !expected.value.trim())) {
+            status.textContent = 'Review the task and add a success phrase before saving the evaluation.';
+            return;
+          }
+          submit.disabled = true;
+          status.textContent = 'Saving locally…';
+          try {
+            const res = await fetch('/api/feedback', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ trace_id: traceId, note: note.value, remember: remember.checked, include_text: include.checked })
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || 'Could not save the report.');
+            let evalMessage = '';
+            if (addEval.checked) {
+              const evalRes = await fetch('/api/evaluations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trace_id: traceId, prompt: evalPrompt.value, expected: expected.value }) });
+              const evalBody = await evalRes.json();
+              if (!evalRes.ok) throw new Error(evalBody.error || 'Report saved, but the evaluation task could not be added.');
+              evalMessage = ' Evaluation task added to your local scorecard.';
+            }
+            status.textContent = (body.lesson_id ? 'Report saved. Your correction will guide similar tasks.' : 'Report saved locally.') + evalMessage;
+            submit.remove();
+          } catch (err) {
+            status.textContent = err.message;
+            submit.disabled = false;
+          }
+        };
+        const manage = document.createElement('button');
+        manage.type = 'button';
+        manage.className = 'feedback-button';
+        manage.textContent = 'View saved lessons';
+        const lessonList = document.createElement('div');
+        lessonList.hidden = true;
+        manage.onclick = async () => {
+          lessonList.hidden = !lessonList.hidden;
+          if (lessonList.hidden) return;
+          lessonList.replaceChildren();
+          try {
+            const res = await fetch('/api/lessons');
+            const body = await res.json();
+            if (!body.lessons.length) { lessonList.textContent = 'No saved lessons.'; return; }
+            body.lessons.forEach(lesson => {
+              const row = document.createElement('div');
+              row.className = 'lesson-row';
+              const text = document.createElement('span');
+              text.textContent = `${lesson.scope}: ${lesson.note}`;
+              const remove = document.createElement('button');
+              remove.type = 'button';
+              remove.textContent = 'Forget';
+              remove.onclick = async () => {
+                const del = await fetch(`/api/lessons/${encodeURIComponent(lesson.id)}`, { method: 'DELETE' });
+                if (del.ok) row.remove();
+              };
+              row.append(text, remove);
+              lessonList.appendChild(row);
+            });
+          } catch (err) { lessonList.textContent = 'Could not load saved lessons.'; }
+        };
+        const evalManage = document.createElement('button');
+        evalManage.type = 'button';
+        evalManage.className = 'feedback-button';
+        evalManage.textContent = 'View evaluation tasks';
+        const evalList = document.createElement('div');
+        evalList.hidden = true;
+        evalManage.onclick = async () => {
+          evalList.hidden = !evalList.hidden;
+          if (evalList.hidden) return;
+          evalList.replaceChildren();
+          try {
+            const res = await fetch('/api/evaluations');
+            const body = await res.json();
+            if (!body.tasks.length) { evalList.textContent = 'No saved evaluation tasks.'; return; }
+            body.tasks.forEach(task => {
+              const row = document.createElement('div'); row.className = 'lesson-row';
+              const text = document.createElement('span'); text.textContent = `${task.prompt} — success includes: ${task.expected || task.evidence}`;
+              const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove';
+              remove.onclick = async () => { const del = await fetch(`/api/evaluations/${encodeURIComponent(task.id)}`, { method: 'DELETE' }); if (del.ok) row.remove(); };
+              row.append(text, remove); evalList.appendChild(row);
+            });
+          } catch (_) { evalList.textContent = 'Could not load evaluation tasks.'; }
+        };
+        panel.append(intro, note, rememberLabel, includeLabel, evalLabel, evalFields, submit, status, manage, lessonList, evalManage, evalList);
+        messageEl.appendChild(panel);
+        note.focus();
+      };
+      messageEl.appendChild(trigger);
     }
 
     function setMode(mode) {
@@ -742,9 +897,10 @@
           }
           if (data.route) currentRoute = data.route;
           handleServerEvent('response', {
-            content: data.content,
+            content: data.content || data.error || 'Buddy could not complete the request.',
             mode: currentMode,
-            mascot: data.mascot
+            mascot: data.mascot || (data.error ? '(x_x)' : undefined),
+            trace_id: data.trace_id
           });
         } catch (err) {
           loader.remove();

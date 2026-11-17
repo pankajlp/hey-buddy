@@ -54,6 +54,8 @@ CLOSE_THIS = re.compile(r"^\s*(please\s+)?(close|shut)\s+(it|this|that)(\s+(page
 QUIT_WORDS = re.compile(r"\b(close|closed|quit|exit|kill|shut down)\b", re.I)
 WINDOW_RULE = re.compile(
     r"\b(window|full ?screen|left half|right half|left side|right side|snap|minimi[sz]e|maximi[sz]e)\b", re.I)
+RUNNING_APPS_RULE = re.compile(
+    r"\b(what|which|list|show)\b.*\b(apps?|applications?)\b.*\b(open|running)\b", re.I)
 
 
 def _names_app(text: str) -> bool:
@@ -92,6 +94,9 @@ class Router:
         return self._by_model(text, previous, context)
 
     def _by_rules(self, text: str, previous: Optional[str] = None) -> Optional[Route]:
+        if RUNNING_APPS_RULE.search(text):
+            return Route("apps", "rule")
+
         # "open Safari", "quit Music": an installed app name after the verb is unambiguous
         match = APP_COMMAND.match(text)
         if match and len(match.group(1).split()) <= 4 and resolve_app(match.group(1)):
