@@ -48,6 +48,16 @@ HANDOFF_TOOL = {
 }
 
 
+# Every agent works on the user's real Mac and accounts. Small models sometimes blame a
+# "testing environment" when a step fails; that excuse is never true.
+HONESTY_RULE = (
+    "\nYou always act on the user's real Mac, browser and accounts: never say you are in a test, demo, "
+    "simulated or sandbox environment. If something didn't work, say which step failed and what the page "
+    "or app showed instead."
+)
+MADE_UP_SETTING = re.compile(
+    r"\b(test(ing)?|demo|simulated|simulation|sandbox(ed)?|mock)\s+(environment|interface|mode|setup|page)\b", re.I)
+
 class BaseAgent:
     # Include the frontmost app, window, and running apps with each request
     wants_screen_context = True
@@ -88,7 +98,7 @@ class BaseAgent:
         """Reset conversation history with system prompt."""
         about_user = f"\nThe user's name is {USER_NAME}." if USER_NAME != "the user" else ""
         self.messages = [
-            {"role": "system", "content": self.system_prompt + about_user}
+            {"role": "system", "content": self.system_prompt + about_user + HONESTY_RULE}
         ]
 
     def add_screen_context_to_prompt(self, user_prompt: str) -> str:
@@ -266,6 +276,15 @@ class BaseAgent:
     _CLAIM_WORDS = {"youtube_play": r"\bplay(ed|ing)\b", "click_on_page": r"\b(click(ed)?|open(ed)?|play(ed|ing)?)\b",
                     "gmail_draft": r"\bdraft(ed)?\b", "quit_app": r"\b(clos(ed|ing)|quit)\b"}
 
+    @staticmethod
+    def _without_made_up_excuses(answer: str) -> str:
+        """Drop sentences claiming Buddy is in a test or simulated setup: it never is."""
+        if not MADE_UP_SETTING.search(answer):
+            return answer
+        sentences = re.split(r"(?<=[.!?])\s+", answer)
+        kept = [s for s in sentences if not MADE_UP_SETTING.search(s)]
+        return " ".join(kept).strip() or "That didn't work, and I'm not sure why. Want me to try another way?"
+
     def _without_refused_claims(self, answer: str) -> str:
         """If the reply claims something that was refused, replace it with an honest one."""
         for tool in self.refused:
@@ -329,7 +348,9 @@ class BaseAgent:
                 return answer
             if step_result.is_done:
                 answer = step_result.final_response or "Done."
-                answer = self._without_refused_claims(answer)
+                answer = self._without_made_up_excuses(self._without_refused_claims(answer))
+                if self.messages and self.messages[-1]["role"] == "assistant":
+                    self.messages[-1]["content"] = answer  # so later turns don't repeat a corrected claim
                 logger.info(f"  reply: {_short(answer, 300)}")
                 return answer
 

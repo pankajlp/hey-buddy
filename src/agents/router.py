@@ -86,12 +86,12 @@ class Router:
     def route(self, text: str, previous: Optional[str] = None, context: Optional[str] = None) -> Route:
         if previous in ("browser", "linkedin") and CLOSE_THIS.search(text):
             return Route(previous, "rule: follow-up")
-        rule = self._by_rules(text)
+        rule = self._by_rules(text, previous)
         if rule:
             return rule
         return self._by_model(text, previous, context)
 
-    def _by_rules(self, text: str) -> Optional[Route]:
+    def _by_rules(self, text: str, previous: Optional[str] = None) -> Optional[Route]:
         # "open Safari", "quit Music": an installed app name after the verb is unambiguous
         match = APP_COMMAND.match(text)
         if match and len(match.group(1).split()) <= 4 and resolve_app(match.group(1)):
@@ -118,10 +118,12 @@ class Router:
             areas.add("browser")
         # Mail and LinkedIn have their own specialists, which win over the general browser
         # "mail from LinkedIn" is about Gmail; "draft a LinkedIn post" is about LinkedIn
-        if MAIL_WORDS.search(text) or (MAIL_RULE.search(text) and not LINKEDIN_RULE.search(text)):
+        # "reply to Maria" in the middle of a LinkedIn conversation is a LinkedIn reply, not an email
+        mid_linkedin = previous == "linkedin" and not MAIL_WORDS.search(text)
+        if MAIL_WORDS.search(text) or (MAIL_RULE.search(text) and not LINKEDIN_RULE.search(text) and not mid_linkedin):
             areas -= {"browser", "music"}
             areas.add("mail")
-        elif LINKEDIN_RULE.search(text):
+        elif LINKEDIN_RULE.search(text) or (mid_linkedin and MAIL_RULE.search(text)):
             areas -= {"browser", "music"}
             areas.add("linkedin")
         if not areas and QUESTION_RULE.search(text):
