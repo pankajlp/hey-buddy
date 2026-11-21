@@ -14,6 +14,10 @@ drafts emails, and reads LinkedIn), asking before anything risky.
   `~/Library/Application Support/HeyBuddy/voice/conds.pkl` (or point `BUDDY_VOICE_PROFILE` at it).
   Buddy then uses it automatically; `BUDDY_TTS=kokoro` switches back. Only clone a voice you own
   or have permission to use.
+  For several voices, put each in `~/Library/Application Support/HeyBuddy/voices/<name>/` (`conds.pkl`,
+  optional `conds_multi.pkl` for Hindi and other languages, optional `name.txt` with the display name)
+  and pick one from the 🗣 dropdown in Buddy's window, next to the stock Kokoro voices and the Mac's
+  own voice. The choice is saved in `settings.json`. Hindi with a Kokoro voice needs `brew install espeak-ng`.
 - **Multi-agent**: a router sends each request to a specialist (Music, Apps, System, Browser, Mail, LinkedIn,
   Talk, Coder) or to a general agent that can read the screen and click. Specialists use fixed-code skills
   (e.g. `play_music`, `window_action`, `youtube_play`) instead of improvising.

@@ -128,6 +128,26 @@ async def speak_text(data: Dict[str, str]):
         VoiceEngine.speak(text)
     return {"status": "ok"}
 
+@app.get("/api/voices")
+async def list_voices():
+    """Voices for the HUD dropdown: cloned voices, stock Kokoro voices, the Mac system voice."""
+    return {"voices": tts.list_voices(), "current": tts.current_voice()}
+
+@app.post("/api/voice")
+async def choose_voice(data: Dict[str, Any]):
+    """Switch Buddy's voice (saved in settings.json) and load it in the background."""
+    try:
+        vid = tts.set_voice(str(data.get("id", "")))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    async def warm():
+        try:
+            await asyncio.to_thread(tts.warm_up, vid)
+        except Exception as e:
+            logger.warning(f"Could not load voice {vid}: {e}")
+    asyncio.create_task(warm())
+    return {"current": vid}
+
 @app.post("/api/tts")
 async def text_to_speech(data: Dict[str, Any]):
     """Buddy's reply as WAV audio in the Kokoro voice; 503 tells the page to use the system voice."""

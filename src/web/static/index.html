@@ -179,6 +179,18 @@
       font-weight: 600;
     }
 
+    .voice-pick {
+      font: inherit;
+      font-size: 11px;
+      color: #3b5bdb;
+      background: #fff;
+      border: 1px solid #dbe4ff;
+      border-radius: 8px;
+      padding: 1px 4px;
+      max-width: 170px;
+      cursor: pointer;
+    }
+
     /* Chat & Events Stream */
     .chat-container {
       flex: 1;
@@ -400,7 +412,9 @@
     <!-- Screen Context Awareness Bar -->
     <div class="context-bar">
       <div>Active: <span class="context-tag" id="active-app-name">Scanning...</span></div>
-      <div id="screen-coords" style="font-size: 10px; color: #666;">--</div>
+      <label title="Whose voice Buddy speaks in">🗣
+        <select id="voice-pick" class="voice-pick" onchange="chooseVoice(this.value)"></select>
+      </label>
     </div>
 
     <!-- Live Messages Stream -->
@@ -526,7 +540,7 @@
       // the time to generate the audio; it's replaced by the real length once that's known.
       speakingUntil = Date.now() + (spoken.length / 13) * 1000 + 3000;
 
-      if (Date.now() >= serverVoiceRetryAt) {
+      if (currentVoice !== 'system' && Date.now() >= serverVoiceRetryAt) {
         try {
           const res = await fetch('/api/tts', {
             method: 'POST',
@@ -576,6 +590,52 @@
         window.speechSynthesis.speak(utter);
       } catch (e) {
         console.warn('Speech synthesis error:', e);
+      }
+    }
+
+    // Whose voice Buddy speaks in: cloned voices, Kokoro voices, or the Mac's system voice
+    let currentVoice = '';
+    async function loadVoices() {
+      try {
+        const j = await (await fetch('/api/voices')).json();
+        const sel = document.getElementById('voice-pick');
+        sel.innerHTML = '';
+        const groups = { clone: 'Cloned voices', kokoro: 'Kokoro', system: 'Mac' };
+        for (const [kind, label] of Object.entries(groups)) {
+          const vs = j.voices.filter(v => v.kind === kind);
+          if (!vs.length) continue;
+          const og = document.createElement('optgroup');
+          og.label = label;
+          for (const v of vs) {
+            const o = document.createElement('option');
+            o.value = v.id;
+            o.textContent = v.label.replace(/ \(cloned\)$/, '').replace(/^Kokoro – /, '');
+            og.appendChild(o);
+          }
+          sel.appendChild(og);
+        }
+        sel.value = currentVoice = j.current;
+      } catch (e) {
+        console.warn('Could not load the voice list:', e);
+      }
+    }
+
+    async function chooseVoice(id) {
+      const sel = document.getElementById('voice-pick');
+      try {
+        const res = await fetch('/api/voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.status);
+        currentVoice = id;
+        serverVoiceRetryAt = 0;
+        const name = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : 'this';
+        speakBrowser(id === 'system' ? "Okay, I'll use the Mac's voice." : `Hi! This is ${name.split(' (')[0].replace('Kokoro – ', '')}'s voice.`);
+      } catch (e) {
+        console.warn('Could not switch voice:', e);
+        sel.value = currentVoice;
       }
     }
 
@@ -925,7 +985,6 @@
         const res = await fetch('/api/status');
         const data = await res.json();
         document.getElementById('active-app-name').textContent = data.active_app || 'Desktop';
-        document.getElementById('screen-coords').textContent = `${data.screen_size} • Mouse: ${data.mouse}`;
         modelNames = { buddy: data.buddy_model, agent: data.agent_model, coder: data.coder_model };
         document.getElementById('model-tag').textContent = modelNames[currentMode] || modelNames.agent;
       } catch (err) {}
@@ -1456,6 +1515,7 @@
     }
 
     connectWS();
+    loadVoices();
 
     // Older versions saved the hands-free setting under another name
     try {
