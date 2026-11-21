@@ -18,6 +18,8 @@ drafts emails, and reads LinkedIn), asking before anything risky.
   optional `conds_multi.pkl` for Hindi and other languages, optional `name.txt` with the display name)
   and pick one from the 🗣 dropdown in Buddy's window, next to the stock Kokoro voices and the Mac's
   own voice. The choice is saved in `settings.json`. Hindi with a Kokoro voice needs `brew install espeak-ng`.
+  Hinglish (Hindi in English letters, "aaj kya plan hai?") is spotted with a word list and rewritten
+  in Devanagari by the chat model before it is spoken, so it gets Hindi pronunciation.
 - **Multi-agent**: a router sends each request to a specialist (Music, Apps, System, Browser, Mail, LinkedIn,
   Talk, Coder) or to a general agent that can read the screen and click. Specialists use fixed-code skills
   (e.g. `play_music`, `window_action`, `youtube_play`) instead of improvising.

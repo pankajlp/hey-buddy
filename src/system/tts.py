@@ -28,6 +28,7 @@ import numpy as np
 
 from src import user_settings
 from src.config import config
+from src.system import hinglish
 from src.system.transcriber import MLX_LOCK
 
 logger = logging.getLogger("heybuddy.tts")
@@ -251,6 +252,13 @@ def synthesize(text: str, speed: float = 1.0, voice: Optional[str] = None) -> by
     vid = voice if _valid(voice) and voice != "system" else _speaking_voice()
     if vid is None:
         raise RuntimeError("speech is set to the Mac system voice")
+    if hinglish.looks_hinglish(text):
+        # Hindi in Roman letters: rewrite in Devanagari first (Buddy's own chat model, already
+        # loaded) so the Hindi voice says it right; read with English sounds it comes out garbled.
+        converted = hinglish.to_devanagari(text, config.ollama_host, config.default_buddy_model)
+        if converted:
+            logger.info("Hinglish spoken as Devanagari: %s", converted[:120])
+            text = converted
     with MLX_LOCK:  # MLX shares the GPU with Whisper and Ollama: one job at a time
         chunks = _render(vid, text, speed)
         if chunks is None and vid.startswith("clone:"):
