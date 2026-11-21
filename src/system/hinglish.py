@@ -44,12 +44,15 @@ haal kuch koi sab sabko mujhse tumse aapse unse usse isse
 FEW_SHOT = [
     ("Arre yaar, aaj office mein bahut kaam tha.", "अरे यार, आज ऑफिस में बहुत काम था।"),
     ("Tum kaise ho? Kal meeting hai na?", "तुम कैसे हो? कल मीटिंग है ना?"),
+    ("Hello! This is Ravi checking the new phone. Kal milte hain, theek hai?",
+     "हेलो! दिस इज़ रवि चेकिंग द न्यू फ़ोन। कल मिलते हैं, ठीक है?"),
 ]
 SYSTEM = (
     "Rewrite the user's Hinglish (Hindi written in Roman letters) in Devanagari script, exactly as "
-    "it would be spoken. Keep every word and the meaning; do not translate, answer or add anything. "
-    "English words used in the sentence (office, meeting, phone) are written in Devanagari the way "
-    "Hindi speakers say them. Numbers stay as digits. Output only the Devanagari text."
+    "it would be spoken. This is a change of script only: keep every word, in the same order. Never "
+    "translate, answer, add or drop words. English words and whole English sentences stay English, "
+    "just written in Devanagari letters as they sound (office -> ऑफिस, this is -> दिस इज़). "
+    "Numbers stay as digits. Output only the Devanagari text."
 )
 
 _cache: "OrderedDict[str, str]" = OrderedDict()
